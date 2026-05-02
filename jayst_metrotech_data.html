@@ -2,140 +2,421 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Jay St-Metrotech MTA Data</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jay St–Metrotech — Live Train Arrivals</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #1a1a1a; color: #eee; margin: 0; }
-    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
-    .menu { display: flex; gap: 0; margin-bottom: 1.5rem; border-bottom: 1px solid #333; }
-    .menu-item { padding: 12px 24px; cursor: pointer; background: transparent; color: #888; border: none; font-size: 1rem; border-bottom: 3px solid transparent; }
-    .menu-item:hover { color: #fff; }
-    .menu-item.active { color: #fff; border-bottom-color: #0af; }
-    .view { display: none; }
-    .view.active { display: block; }
-    .raw-view pre { background: #0d0d0d; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
-    .friendly-view { max-width: 600px; }
-    .section { margin-bottom: 2rem; }
-    .section h3 { font-size: 1rem; color: #0af; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    .train-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #252525; border-radius: 8px; margin-bottom: 8px; }
-    .train-row.departed { opacity: 0.6; }
-    .route-badge { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; flex-shrink: 0; }
-    .route-a { background: #0039a6; color: #fff; }
-    .route-c { background: #0039a6; color: #fff; }
-    .route-f { background: #ff6319; color: #fff; }
-    .route-r { background: #fccc0a; color: #000; }
-    .route-n { background: #fccc0a; color: #000; }
-    .route-q { background: #fccc0a; color: #000; }
-    .train-info { flex: 1; }
-    .train-destination { font-weight: 600; }
-    .train-direction { font-size: 0.85rem; color: #888; }
-    .train-eta { font-size: 1.1rem; font-weight: 600; min-width: 70px; text-align: right; }
-    .train-eta.arriving { color: #4ade80; }
-    .train-eta.departed { color: #888; }
-    .empty { color: #666; padding: 24px; text-align: center; }
-    .refresh { margin-bottom: 1rem; }
-    .refresh-btn { padding: 8px 16px; background: #333; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
-    .refresh-btn:hover { background: #444; }
+    /* ---- reset & base ---- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #1a1a1a;
+      --surface:  #252525;
+      --border:   #333;
+      --text:     #eee;
+      --muted:    #888;
+      --green:    #4ade80;
+      --focus:    #0af;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 1.25rem;
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+
+    /* ---- skip link ---- */
+    .skip-link {
+      position: absolute;
+      top: -999px;
+      left: 0;
+      background: #000;
+      color: #fff;
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      z-index: 999;
+      text-decoration: none;
+    }
+    .skip-link:focus { top: 0; }
+
+    /* ---- header ---- */
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.4rem; font-weight: 600; }
+    .last-updated {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    /* ---- nav tabs ---- */
+    nav[aria-label="Page sections"] {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.25rem;
+    }
+
+    nav button {
+      padding: 0.6rem 1.25rem;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-bottom: 3px solid transparent;
+      font-size: 0.95rem;
+      cursor: pointer;
+      min-height: 44px; /* WCAG 2.5.5 touch target */
+    }
+    nav button:hover { color: var(--text); }
+    nav button[aria-selected="true"] {
+      color: var(--text);
+      border-bottom-color: var(--focus);
+    }
+    nav button:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: -2px;
+    }
+
+    /* ---- refresh button ---- */
+    .refresh-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      min-height: 44px;
+      margin-bottom: 1.25rem;
+    }
+    .refresh-btn:hover { background: #2e2e2e; }
+    .refresh-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .refresh-btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+
+    /* ---- tab panels ---- */
+    [role="tabpanel"] { display: none; }
+    [role="tabpanel"].active { display: block; }
+
+    /* ---- arrivals list ---- */
+    .arrivals-section { margin-bottom: 2rem; }
+    .arrivals-section h2 {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 0.75rem;
+    }
+
+    .train-list {
+      list-style: none;
+    }
+
+    .train-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+    }
+    .train-item.departed { opacity: 0.55; }
+
+    /* route badge */
+    .route-badge {
+      width: 2.1rem;
+      height: 2.1rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+      flex-shrink: 0;
+      /* aria-hidden on badge span; full text on <li> aria-label */
+    }
+    .route-a, .route-c { background: #0039a6; color: #fff; }
+    .route-f            { background: #ff6319; color: #fff; }
+    .route-r, .route-n, .route-q { background: #fccc0a; color: #000; }
+
+    .train-info { flex: 1; min-width: 0; }
+    .train-destination {
+      font-size: 0.95rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .train-direction { font-size: 0.8rem; color: var(--muted); }
+
+    .train-eta {
+      font-size: 1rem;
+      font-weight: 600;
+      min-width: 4rem;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .train-eta.arriving { color: var(--green); }
+    .train-eta.departed { color: var(--muted); }
+
+    /* empty / loading states */
+    .state-msg {
+      padding: 1.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    /* ---- raw view ---- */
+    #view-raw pre {
+      background: #0d0d0d;
+      padding: 1rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow-x: auto;
+    }
+
+    /* ---- sr-only utility ---- */
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ---- high-contrast / forced-colors ---- */
+    @media (forced-colors: active) {
+      .route-badge { border: 2px solid ButtonText; }
+      .train-item  { border: 1px solid ButtonText; }
+    }
   </style>
 </head>
 <body>
-  <h1>Jay St–Metrotech</h1>
-  <div class="menu">
-    <button class="menu-item active" data-view="raw">Raw data</button>
-    <button class="menu-item" data-view="friendly">Upcoming arrivals</button>
-  </div>
 
-  <div class="refresh">
-    <button class="refresh-btn" onclick="loadData()">Refresh</button>
-  </div>
+  <!-- skip nav for keyboard users -->
+  <a class="skip-link" href="#main-content">Skip to main content</a>
 
-  <div id="view-friendly" class="view">
-    <div class="friendly-view">
-      <div class="section">
-        <h3>Upcoming arrivals</h3>
-        <div id="upcoming-trains"></div>
-      </div>
-      <div class="section">
-        <h3>Recently departed</h3>
-        <div id="departed-trains"></div>
-      </div>
+  <header>
+    <h1>Jay St–Metrotech</h1>
+    <p class="last-updated" id="last-updated" aria-live="polite"></p>
+  </header>
+
+  <!-- tab nav -->
+  <nav aria-label="Page sections">
+    <button
+      role="tab"
+      aria-selected="true"
+      aria-controls="view-arrivals"
+      id="tab-arrivals"
+      data-view="arrivals"
+    >Upcoming arrivals</button>
+    <button
+      role="tab"
+      aria-selected="false"
+      aria-controls="view-raw"
+      id="tab-raw"
+      data-view="raw"
+      tabindex="-1"
+    >Raw data</button>
+  </nav>
+
+  <button
+    class="refresh-btn"
+    id="refresh-btn"
+    onclick="loadData()"
+    aria-label="Refresh train arrival data"
+  >
+    <span aria-hidden="true">↻</span> Refresh
+  </button>
+
+  <main id="main-content">
+
+    <!-- arrivals panel -->
+    <div
+      id="view-arrivals"
+      role="tabpanel"
+      aria-labelledby="tab-arrivals"
+      class="active"
+    >
+      <!-- live region: screen reader announces updates silently -->
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        id="arrivals-status"
+        class="sr-only"
+      ></div>
+
+      <section class="arrivals-section" aria-label="Upcoming trains">
+        <h2 aria-hidden="true">Upcoming</h2>
+        <ul id="upcoming-trains" class="train-list" aria-label="Upcoming trains">
+          <li class="state-msg" role="status">Loading…</li>
+        </ul>
+      </section>
+
+      <section class="arrivals-section" aria-label="Recently departed trains">
+        <h2 aria-hidden="true">Recently departed</h2>
+        <ul id="departed-trains" class="train-list" aria-label="Recently departed trains"></ul>
+      </section>
     </div>
-  </div>
 
-  <div id="view-raw" class="view raw-view active">
-    <pre id="raw-output">Loading...</pre>
-  </div>
+    <!-- raw data panel -->
+    <div
+      id="view-raw"
+      role="tabpanel"
+      aria-labelledby="tab-raw"
+      hidden
+    >
+      <pre id="raw-output" aria-label="Raw JSON data from MTA API">Loading…</pre>
+    </div>
+
+  </main>
 
   <script src="jayst_metrotech_data.js"></script>
   <script>
-    let cachedData = null;
+    /* -------- tab switching -------- */
+    const tabs = document.querySelectorAll('[role="tab"]');
 
-    function renderFriendly(data) {
-      const upcoming = data.filter(t => t.etaSeconds >= 0);
-      const departed = data.filter(t => t.etaSeconds < 0).slice(0, 10);
-
-      const upcomingEl = document.getElementById('upcoming-trains');
-      const departedEl = document.getElementById('departed-trains');
-
-      upcomingEl.innerHTML = upcoming.length
-        ? upcoming.map(t => `
-          <div class="train-row">
-            <span class="route-badge route-${t.route.toLowerCase()}">${t.route}</span>
-            <div class="train-info">
-              <div class="train-destination">To ${t.destination}</div>
-              <div class="train-direction">${t.direction === 'north' ? 'Uptown' : 'Downtown'}</div>
-            </div>
-            <span class="train-eta arriving">${t.etaFormatted}</span>
-          </div>
-        `).join('')
-        : '<div class="empty">No upcoming trains</div>';
-
-      departedEl.innerHTML = departed.length
-        ? departed.map(t => `
-          <div class="train-row departed">
-            <span class="route-badge route-${t.route.toLowerCase()}">${t.route}</span>
-            <div class="train-info">
-              <div class="train-destination">To ${t.destination}</div>
-              <div class="train-direction">${t.direction === 'north' ? 'Uptown' : 'Downtown'}</div>
-            </div>
-            <span class="train-eta departed">${t.etaFormatted}</span>
-          </div>
-        `).join('')
-        : '<div class="empty">No recent departures</div>';
-    }
-
-    function renderRaw(data) {
-      document.getElementById('raw-output').textContent = JSON.stringify(data, null, 2);
-    }
-
-    function loadData() {
-      document.getElementById('raw-output').textContent = 'Loading...';
-      document.getElementById('upcoming-trains').innerHTML = '<div class="empty">Loading...</div>';
-      document.getElementById('departed-trains').innerHTML = '';
-
-      fetchJayStMetrotechData()
-        .then(data => {
-          cachedData = data;
-          renderFriendly(data);
-          renderRaw(data);
-        })
-        .catch(err => {
-          const msg = 'Error: ' + err.message;
-          document.getElementById('raw-output').textContent = msg;
-          document.getElementById('upcoming-trains').innerHTML = '<div class="empty">' + msg + '</div>';
-        });
-    }
-
-    document.querySelectorAll('.menu-item').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.menu-item').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => activateTab(tab));
+      tab.addEventListener('keydown', e => {
+        const list = [...tabs];
+        const idx  = list.indexOf(e.target);
+        let next;
+        if (e.key === 'ArrowRight') next = list[(idx + 1) % list.length];
+        if (e.key === 'ArrowLeft')  next = list[(idx - 1 + list.length) % list.length];
+        if (e.key === 'Home') next = list[0];
+        if (e.key === 'End')  next = list[list.length - 1];
+        if (next) { e.preventDefault(); next.focus(); activateTab(next); }
       });
     });
 
+    function activateTab(tab) {
+      tabs.forEach(t => {
+        t.setAttribute('aria-selected', 'false');
+        t.setAttribute('tabindex', '-1');
+      });
+      tab.setAttribute('aria-selected', 'true');
+      tab.removeAttribute('tabindex');
+
+      document.querySelectorAll('[role="tabpanel"]').forEach(p => {
+        p.classList.remove('active');
+        p.hidden = true;
+      });
+      const panel = document.getElementById(tab.getAttribute('aria-controls'));
+      panel.classList.add('active');
+      panel.hidden = false;
+    }
+
+    /* -------- render helpers -------- */
+    function directionLabel(dir) {
+      return dir === 'north' ? 'Uptown' : 'Downtown';
+    }
+
+    function buildTrainItem(t) {
+      const li = document.createElement('li');
+      li.className = 'train-item' + (t.etaSeconds < 0 ? ' departed' : '');
+
+      // full accessible label on the list item
+      const etaText  = t.etaSeconds < 0 ? 'departed' : `arriving in ${t.etaFormatted}`;
+      const dirText  = directionLabel(t.direction);
+      li.setAttribute('aria-label',
+        `${t.route} train, ${dirText} to ${t.destination}, ${etaText}`
+      );
+
+      li.innerHTML = `
+        <span class="route-badge route-${t.route.toLowerCase()}" aria-hidden="true">${t.route}</span>
+        <div class="train-info">
+          <div class="train-destination">To ${t.destination}</div>
+          <div class="train-direction">${dirText}</div>
+        </div>
+        <span class="train-eta ${t.etaSeconds < 0 ? 'departed' : 'arriving'}" aria-hidden="true">
+          ${t.etaFormatted}
+        </span>
+      `;
+      return li;
+    }
+
+    function renderFriendly(data) {
+      const upcoming  = data.filter(t => t.etaSeconds >= 0);
+      const departed  = data.filter(t => t.etaSeconds < 0).slice(0, 8);
+
+      const upEl  = document.getElementById('upcoming-trains');
+      const depEl = document.getElementById('departed-trains');
+
+      upEl.innerHTML = '';
+      depEl.innerHTML = '';
+
+      if (upcoming.length) {
+        upcoming.forEach(t => upEl.appendChild(buildTrainItem(t)));
+      } else {
+        upEl.innerHTML = '<li class="state-msg">No upcoming trains</li>';
+      }
+
+      if (departed.length) {
+        departed.forEach(t => depEl.appendChild(buildTrainItem(t)));
+      } else {
+        depEl.innerHTML = '<li class="state-msg">No recent departures</li>';
+      }
+
+      // notify screen readers that data updated
+      const count = upcoming.length;
+      document.getElementById('arrivals-status').textContent =
+        `Train data updated. ${count} upcoming train${count !== 1 ? 's' : ''}.`;
+    }
+
+    function renderRaw(data) {
+      document.getElementById('raw-output').textContent =
+        JSON.stringify(data, null, 2);
+    }
+
+    function setTimestamp() {
+      const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('last-updated').textContent = `Last updated: ${now}`;
+    }
+
+    /* -------- data loading -------- */
+    function loadData() {
+      const btn = document.getElementById('refresh-btn');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.disabled = true;
+
+      document.getElementById('upcoming-trains').innerHTML =
+        '<li class="state-msg" role="status">Loading…</li>';
+      document.getElementById('departed-trains').innerHTML = '';
+      document.getElementById('raw-output').textContent = 'Loading…';
+
+      fetchJayStMetrotechData()
+        .then(data => {
+          renderFriendly(data);
+          renderRaw(data);
+          setTimestamp();
+        })
+        .catch(err => {
+          const msg = 'Could not load data: ' + err.message;
+          document.getElementById('upcoming-trains').innerHTML =
+            `<li class="state-msg" role="alert">${msg}</li>`;
+          document.getElementById('raw-output').textContent = msg;
+          document.getElementById('arrivals-status').textContent = msg;
+        })
+        .finally(() => {
+          btn.removeAttribute('aria-disabled');
+          btn.disabled = false;
+        });
+    }
+
+    // auto-refresh every 30 seconds
     loadData();
+    setInterval(loadData, 30000);
   </script>
 </body>
 </html>
